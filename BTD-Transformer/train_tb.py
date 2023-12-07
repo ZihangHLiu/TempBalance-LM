@@ -18,6 +18,7 @@ from utils.exp_utils import create_exp_dir
 from utils.data_parallel import BalancedDataParallel
 from esd_utils import net_esd_estimator, get_layer_temps
 
+from tempbalance import Tempbalance
 
 # set manual seed
 def set_seed(seed=42):
@@ -313,108 +314,22 @@ else:
 
 print(model)
 
-# initialize untuned lr
-untuned_lr = args.lr
+# initialize tb scheduler
+tb_scheduler = Tempbalance(
+    net=model,
+    remove_first_layer=False,
+    remove_last_layer=(args.remove_last_layer=='True'),
+    remove_few_eigs_layer=(args.remove_few_eigs_layer=='True'),
+    eigs_thresh=args.eigs_thresh,
+    lr_min_ratio=args.lr_min_ratio,
+    lr_max_ratio=args.lr_min_ratio+args.lr_slope,
+    batchnorm=False,
+    layernorm=True,
+    schedule_per_step=True,
+    tb_interval=args.esd_interval
+)
 
-# create mapping from layernorm to linear layer
-logging("#####Mapping layer norm to Linear#######")
-longname_lst = []
-type_lst = []
-ln_to_linear = {}
-for name, module in model.named_modules():
-    if isinstance(module, nn.Linear):
-        longname_lst.append(name)
-        type_lst.append('nn.Linear')
-    if isinstance(module, nn.LayerNorm):
-        if type_lst[-1] == 'nn.Linear':
-            ln_to_linear[name] = longname_lst[-1]
-        longname_lst.append(name)
-        type_lst.append('nn.LayerNorm')
-for key in ln_to_linear:
-    logging(f"{key} -> {ln_to_linear[key]}")
-
-#######################ESD analysis###############################
-##################################################################
-logging("####################Start ESD analysis###################")
-if not os.path.exists(os.path.join(args.work_dir, 'stats')):
-    os.makedirs(os.path.join(args.work_dir, 'stats'))
-metrics = net_esd_estimator(model, 
-                  EVALS_THRESH = 0.00001,
-                  bins = 100,
-                  pl_fitting=args.pl_fitting,
-                  xmin_pos=args.xmin_pos, 
-                  filter_zeros = args.filter_zeros=='True')
-
-args.layer_stats=pd.DataFrame({key:metrics[key] for key in metrics if key!='eigs'})
-np.save(os.path.join(args.work_dir, 'stats', 'esd_epoch_0.npy'), metrics)
-
-######################  TBR scheduling ##########################
-##################################################################
-logging("################## Enable temp balance ##############")
-if args.remove_last_layer == 'True':
-    logging("remove last layer of alpha<---------------------")
-    args.layer_stats = args.layer_stats.drop(labels=len(args.layer_stats) - 1, axis=0)
-    # index must be reset otherwise may delete the wrong row 
-    args.layer_stats.index = list(range(len(args.layer_stats[args.metric])))
-if args.remove_few_eigs_layer == 'True':
-    assert args.eigs_thresh > 0, "Must set a valid threshold to filter the eigenvaues"
-    layer_with_few_eigs = []
-    for i, name in enumerate(metrics['longname']):
-        if len(metrics['eigs'][i]) < args.eigs_thresh:
-            logging(f"layer [{name}] has {len(metrics['eigs'][i])} eigenvalues, less than {args.eigs_thresh}, remove it")
-            layer_with_few_eigs.append(name)
-    logging(f"remove {len(layer_with_few_eigs)} layers with few eigs<---------------------")
-    drop_layers = args.layer_stats['longname'].isin(layer_with_few_eigs)
-    args.layer_stats = args.layer_stats[~drop_layers]
-
-
-args.metric_scores = np.array(args.layer_stats[args.metric])
-#args, n_alphas, epoch_val
-scheduled_lr_lst = get_layer_temps(args, args.assign_func, args.metric_scores, args.lr)
-args.layer_stats['scheduled_lr'] = scheduled_lr_lst
-
-# these params should be tuned
-layer_name_to_tune = list(args.layer_stats['longname'])
-all_params = []
-all_params_lr = []
-params_to_tune_ids = []
-linear_count = 0
-norm_count = 0
-all_count = 0
-
-# these params should be tuned
-for name, module in model.named_modules():
-    # these are the conv layers analyzed by 
-    if name in layer_name_to_tune:
-        assert name not in layer_with_few_eigs
-        params_to_tune_ids += list(map(id, module.parameters()))
-        scheduled_lr = args.layer_stats[args.layer_stats['longname'] == name]['scheduled_lr'].item()
-        all_params_lr.append(scheduled_lr)
-        all_params.append({'params': module.parameters(), 'lr': args.lr})
-        linear_count += 1
-        all_count += 1
-    # decide should we tune the batch norm accordingly,  is this layer batchnorm and does its corresponding conv in layer_name_to_tune
-    elif args.layernorm == 'True' \
-            and isinstance(module, nn.LayerNorm) \
-                and name in ln_to_linear \
-                    and ln_to_linear[name] in layer_name_to_tune:
-
-        #logging(f"Initial Tuning LayerNorm: {name} -------> {ln_to_linear[name]} ")
-        params_to_tune_ids += list(map(id, module.parameters()))
-        scheduled_lr = args.layer_stats[args.layer_stats['longname'] == ln_to_linear[name]]['scheduled_lr'].item()
-        all_params_lr.append(scheduled_lr)
-        all_params.append({'params': module.parameters(), 'lr': args.lr})
-        norm_count += 1
-        all_count += 1
-    # another way is to add a else here and append params with args.lr
-    elif name in layer_with_few_eigs:
-        print(list(map(id, module.parameters())))
-
-# those params are untuned
-logging(f"Total number of params to tune : {all_count},  linear: {linear_count}  norm: {norm_count}")
-untuned_params = filter(lambda p: id(p) not in params_to_tune_ids, model.parameters())
-all_params.append({'params': untuned_params, 'lr': args.lr}) 
-
+tb_param_group, layer_count = tb_scheduler.build_optimizer_param_group(untuned_lr=args.lr, )
 
 #### optimizer
 if args.optim.lower() == 'adam':
@@ -428,7 +343,7 @@ if args.optim.lower() == 'adam':
         optimizer_sparse = optim.SparseAdam(sparse_params, lr=args.lr)
         optimizer = optim.Adam(dense_params, lr=args.lr)
     else:
-        optimizer = optim.Adam(all_params, lr=args.lr)
+        optimizer = optim.Adam(tb_param_group, lr=args.lr)
 else:
     raise NotImplementedError
 
@@ -541,82 +456,8 @@ def train():
 
         ##################################################################
         # Reschedule the learning rate
-        if train_step % args.esd_interval == 0:
-            logging("################ Start ESD analysis#############")
-            esd_start_time = time.time()
-            metrics = net_esd_estimator(model, 
-                    EVALS_THRESH = 0.00001,
-                    bins = 100,
-                    pl_fitting=args.pl_fitting,
-                    xmin_pos=args.xmin_pos,
-                    filter_zeros=args.filter_zeros=='True')
-            
-            metric_summary = {}
-            for key in metrics:
-                if key != 'eigs' and key != 'longname':
-                    metric_summary[key] = np.mean(metrics[key])
-
-            args.layer_stats= pd.DataFrame({key:metrics[key] for key in metrics if key!='eigs'})
-
-            esd_estimated_time = time.time() - esd_start_time
-            logging(f"-----> ESD estimation time: {esd_estimated_time:.3f}")
-
-            logging("############### Schedule by Temp Balance###############")
-            assert len(metric_summary) > 0, "in TBR, every epoch should has an updated metric summary"
-            if args.remove_last_layer == 'True':
-                print('remove last layer <--------------------')
-                args.layer_stats = args.layer_stats.drop(labels=len(args.layer_stats) - 1, axis=0)
-                # index must be reset otherwise may delete the wrong row 
-                args.layer_stats.index = list(range(len(args.layer_stats[args.metric])))
-            if args.remove_few_eigs_layer == 'True':
-                print(f"remove {len(layer_with_few_eigs)} layers with few eigs<---------------------")
-                drop_layers = args.layer_stats['longname'].isin(layer_with_few_eigs)
-                args.layer_stats = args.layer_stats[~drop_layers]
-            
-            args.metric_scores = np.array(args.layer_stats[args.metric])
-            
-            print(f"---------------------->>> args.metric_scores has been updated <<<---------------------")
-
-            scheduled_lr_lst = get_layer_temps(args, args.assign_func, args.metric_scores, untuned_lr)
-            args.layer_stats['scheduled_lr'] = scheduled_lr_lst
+        tb_scheduler.step(optimizer, untuned_lr)
         
-            layer_name_to_tune = list(args.layer_stats['longname'])
-            all_params_lr = []
-
-            linear_count = 0
-            norm_count = 0
-            all_count = 0
-            for name, module in model.named_modules():
-                if name in layer_name_to_tune:
-                    assert name not in layer_with_few_eigs
-                    scheduled_lr = args.layer_stats[args.layer_stats['longname'] == name]['scheduled_lr'].item()
-                    all_params_lr.append(scheduled_lr)
-                    linear_count += 1
-                    all_count += 1
-                elif args.layernorm == 'True' \
-                        and isinstance(module, nn.LayerNorm) \
-                            and name in ln_to_linear \
-                                and ln_to_linear[name] in layer_name_to_tune:
-
-                    scheduled_lr = args.layer_stats[args.layer_stats['longname'] == ln_to_linear[name]]['scheduled_lr'].item()
-                    all_params_lr.append(scheduled_lr)
-                    norm_count += 1
-                    all_count += 1
-
-            for index, param_group in enumerate(optimizer.param_groups):
-                if index <= all_count - 1:
-                    param_group['lr'] = all_params_lr[index]
-                else:
-                    param_group['lr'] = untuned_lr
- 
-
-        else:  
-            if args.tb_update == 'stage': # 
-                for index, param_group in enumerate(optimizer.param_groups):
-                    param_group['lr'] = prev_lr[index]
-            else:
-                raise NotImplementedError
-
         if train_step % args.log_interval == 0:
             ##################### log training stats ###########################
             cur_loss = train_loss / args.log_interval

@@ -19,12 +19,15 @@ class Tempbalance(object):
                     filter_zeros=False,
                     remove_first_layer=True,
                     remove_last_layer=True,
+                    remove_few_eigs_layer=True,
+                    eigs_thresh=0,
                     esd_metric_for_tb='alpha',
                     assign_func='tb_linear_map',
                     lr_min_ratio=0.5,
                     lr_max_ratio=1.5,
                     batchnorm=True,
                     batchnorm_type='name',
+                    layernorm=True,
                     schedule_per_step=False,
                     tb_interval=None
                     ):
@@ -39,13 +42,16 @@ class Tempbalance(object):
             filter_zeros (bool, ):       filter small eigenvalues or not. Defaults to False.
             remove_first_layer (bool, ): whether exclude first layer in TB. Defaults to True.
             remove_last_layer (bool, ): whether exclude last layer in TB. Defaults to True.
+            remove_few_eigs_layer (bool, ): whether exclude layers that have too few eigenvalues to perform accurate alpha estimation.
+            eigs_thresh (int, ):         threshold to exclude layers with few eigenvalues.
             esd_metric_for_tb (str, ): metric for TB scheduling. Defaults to 'alpha'.
             assign_func (str, ):         learning rate assignment function. Defaults to 'tb_linear_map'.
             lr_min_ratio (float, ):      learning rate lower bound. Defaults to 0.5.
             lr_max_ratio (float, ):       learning rate upper bound. Defaults to 1.5.
             batchnorm (bool, ):          whether adjust batch norm learning rate using TB. Defaults to True.
+            linearnorm (bool, ):          whether adjust linear norm learning rate using TB. Defaults to True.
             schedule_per_step (bool, ):  whether schedule learning rate after each iteration.
-            tb_interval(int, ):          the interval to use tb for lr reschedule (only useful when scheduling lr after each iteration)
+            tb_interval (int, ):          the interval to use tb for lr reschedule (only useful when scheduling lr after each iteration)
         """
         self.net = net
         self.EVALS_THRESH = EVALS_THRESH
@@ -56,11 +62,14 @@ class Tempbalance(object):
         self.filter_zeros = filter_zeros
         self.remove_first_layer = remove_first_layer
         self.remove_last_layer = remove_last_layer
+        self.remove_few_eigs_layer = remove_few_eigs_layer
+        self.eigs_thresh = eigs_thresh
         self.esd_metric_for_tb = esd_metric_for_tb
         self.assign_func = assign_func
         self.lr_min_ratio = lr_min_ratio
         self.lr_max_ratio = lr_max_ratio
         self.batchnorm = batchnorm
+        self.layernorm = layernorm
         self.schedule_per_step = schedule_per_step
         
         self.train_step = 0
@@ -108,18 +117,33 @@ class Tempbalance(object):
                     longname_lst.append(name)
                     type_lst.append('nn.BatchNorm2d')
         
+        self.ln_to_linear = {}
+        if layernorm == True:
+            longname_lst = []
+            type_lst = []
+            for name, module in self.net.named_modules():
+                if isinstance(module, nn.Linear):
+                    longname_lst.append(name)
+                    type_lst.append('nn.Linear')
+                if isinstance(module, nn.LayerNorm):
+                    if type_lst[-1] == 'nn.Linear':
+                        self.ln_to_linear[name] = longname_lst[-1]
+                    longname_lst.append(name)
+                    type_lst.append('nn.LayerNorm')
+        
         print(f'initialize which layer to follow for each batch norm layer, type= {batchnorm_type}')
         print('--------------------')
         for key in self.bn_to_conv:
             print(f"{key} -> {self.bn_to_conv[key]}")
         print('--------------------')
         
-    def build_optimizer_param_group(self, untuned_lr=0.1, initialize=True):
+    def build_optimizer_param_group(self, untuned_lr=0.1, initialize=True, start_tb=True):
         """build the parameter group for optimizer
 
         Args:
             untuned_lr (float, ): global learning rate that is not tuned. Defaults to 0.1.
             initialize (bool, ): if True, build a list of dictionary, if False, build a list of learning rate . Defaults to True.
+            start_tb (bool, ): if True, use tb scheduling along with initialization
 
         Returns:
             _type_: _description_
@@ -134,6 +158,15 @@ class Tempbalance(object):
         if self.remove_last_layer:
             layer_stats = layer_stats.drop(labels=len(layer_stats) - 1, axis=0)
             # index must be reset otherwise may delete the wrong row 
+            layer_stats.index = list(range(len(layer_stats[self.esd_metric_for_tb])))
+        if self.remove_few_eigs_layer:
+            assert self.eigs_thresh > 0, "Must set a valid threshold to filter the eigenvaues"
+            layer_with_few_eigs = []
+            for i, name in enumerate(metrics['longname']):
+                if len(metrics['eigs'][i]) < self.eigs_thresh:
+                    layer_with_few_eigs.append(name)
+            drop_layers = layer_stats['longname'].isin(layer_with_few_eigs)
+            layer_stats = layer_stats[~drop_layers]
             layer_stats.index = list(range(len(layer_stats[self.esd_metric_for_tb])))
         
         metric_scores = np.array(layer_stats[self.esd_metric_for_tb])
@@ -175,6 +208,20 @@ class Tempbalance(object):
                     # append tuned learning rate 
                     opt_params_groups.append(scheduled_lr)
                 layer_count += 1
+                
+            elif self.layernorm \
+                    and isinstance(module, nn.LayerNorm) \
+                        and name in self.ln_to_linear \
+                            and self.ln_to_linear[name] in layer_name_to_tune:
+
+                #logging(f"Initial Tuning LayerNorm: {name} -------> {ln_to_linear[name]} ")
+                params_to_tune_ids += list(map(id, module.parameters()))
+                scheduled_lr = layer_stats[layer_stats['longname'] == self.ln_to_linear[name]]['scheduled_lr'].item()
+                if initialize:
+                    opt_params_groups.append({'params': module.parameters(), 'lr': scheduled_lr})
+                else:
+                    opt_params_groups.append(scheduled_lr)
+                layer_count += 1
         
         if initialize:
             # those params are untuned
@@ -188,6 +235,7 @@ class Tempbalance(object):
                 self.prev_lr.append(param_group['lr'])
             return opt_params_groups, layer_count
         else:
+            opt_params_groups.append(untuned_lr)
             self.prev_lr = []
             for param_group in opt_params_groups:
                 self.prev_lr.append(param_group['lr'])

@@ -21,3 +21,6 @@ bash ./BTD-Transformer/scripts/tensorized/run_ptb.sh
 # TempBalance
 bash ./BTD-Transformer/scripts/tensorized/run_ptb_tb.sh
 ```
+
+## Acknowledgement
+1. We thank the open-sourced codebase [The-compression-of-Transformer](https://github.com/szhangtju/The-compression-of-Transformer/tree/master).
