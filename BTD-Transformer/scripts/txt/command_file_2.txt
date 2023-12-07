@@ -1,0 +1,10 @@
+sbatch -o /data/yefan0726/checkpoints/zihang/tempbalance/lm/slurm_output.log /home/eecs/yefan0726/zihang/TempBalance/language_modeling/BTD-Transformer/scripts/tensorized/slurm_run_ptb.sh 22
+sbatch -o /data/yefan0726/checkpoints/zihang/tempbalance/lm/slurm_output.log /home/eecs/yefan0726/zihang/TempBalance/language_modeling/BTD-Transformer/scripts/tensorized/slurm_run_ptb.sh 23
+sbatch -o /data/yefan0726/checkpoints/zihang/tempbalance/lm/slurm_output.log /home/eecs/yefan0726/zihang/TempBalance/language_modeling/BTD-Transformer/scripts/tensorized/slurm_run_ptb.sh 24
+sbatch -o /data/yefan0726/checkpoints/zihang/tempbalance/lm/slurm_output.log /home/eecs/yefan0726/zihang/TempBalance/language_modeling/BTD-Transformer/scripts/tensorized/slurm_run_ptb.sh 25
+sbatch -o /data/yefan0726/checkpoints/zihang/tempbalance/lm/slurm_output.log /home/eecs/yefan0726/zihang/TempBalance/language_modeling/BTD-Transformer/scripts/tensorized/slurm_run_ptb.sh 26
+sbatch -o /data/yefan0726/checkpoints/zihang/tempbalance/lm/slurm_output.log /home/eecs/yefan0726/zihang/TempBalance/language_modeling/BTD-Transformer/scripts/tensorized/slurm_run_ptb_tb.sh 2
+sbatch -o /data/yefan0726/checkpoints/zihang/tempbalance/lm/slurm_output.log /home/eecs/yefan0726/zihang/TempBalance/language_modeling/BTD-Transformer/scripts/tensorized/slurm_run_ptb_tb.sh 3
+sbatch -o /data/yefan0726/checkpoints/zihang/tempbalance/lm/slurm_output.log /home/eecs/yefan0726/zihang/TempBalance/language_modeling/BTD-Transformer/scripts/tensorized/slurm_run_ptb_tb.sh 4
+sbatch -o /data/yefan0726/checkpoints/zihang/tempbalance/lm/slurm_output.log /home/eecs/yefan0726/zihang/TempBalance/language_modeling/BTD-Transformer/scripts/tensorized/slurm_run_ptb_tb.sh 5
+sbatch -o /data/yefan0726/checkpoints/zihang/tempbalance/lm/slurm_output.log /home/eecs/yefan0726/zihang/TempBalance/language_modeling/BTD-Transformer/scripts/tensorized/slurm_run_ptb_tb.sh 6

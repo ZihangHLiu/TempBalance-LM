@@ -1,0 +1,10 @@
+bash /home/eecs/yefan0726/zihang/TempBalance/language_modeling/BTD-Transformer/scripts/tensorized/slurm_run_ptb.sh 22
+bash /home/eecs/yefan0726/zihang/TempBalance/language_modeling/BTD-Transformer/scripts/tensorized/slurm_run_ptb.sh 23
+bash /home/eecs/yefan0726/zihang/TempBalance/language_modeling/BTD-Transformer/scripts/tensorized/slurm_run_ptb.sh 24
+bash /home/eecs/yefan0726/zihang/TempBalance/language_modeling/BTD-Transformer/scripts/tensorized/slurm_run_ptb.sh 25
+bash /home/eecs/yefan0726/zihang/TempBalance/language_modeling/BTD-Transformer/scripts/tensorized/slurm_run_ptb.sh 26
+bash /home/eecs/yefan0726/zihang/TempBalance/language_modeling/BTD-Transformer/scripts/tensorized/slurm_run_ptb_tb.sh 2
+bash /home/eecs/yefan0726/zihang/TempBalance/language_modeling/BTD-Transformer/scripts/tensorized/slurm_run_ptb_tb.sh 3
+bash /home/eecs/yefan0726/zihang/TempBalance/language_modeling/BTD-Transformer/scripts/tensorized/slurm_run_ptb_tb.sh 4
+bash /home/eecs/yefan0726/zihang/TempBalance/language_modeling/BTD-Transformer/scripts/tensorized/slurm_run_ptb_tb.sh 5
+bash /home/eecs/yefan0726/zihang/TempBalance/language_modeling/BTD-Transformer/scripts/tensorized/slurm_run_ptb_tb.sh 6
