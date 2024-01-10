@@ -32,9 +32,7 @@ class Tempbalance(object):
                     batchnorm=True,
                     batchnorm_type='name',
                     layernorm=True,
-                    schedule_per_step=False,
                     tb_interval=1,
-                    warmup_step=0,
                     ):
         """init function
         Args:
@@ -59,7 +57,6 @@ class Tempbalance(object):
             lr_max_ratio (float, ):       learning rate upper bound. Defaults to 1.5.
             batchnorm (bool, ):          whether adjust batch norm learning rate using TB. Defaults to True.
             linearnorm (bool, ):          whether adjust linear norm learning rate using TB. Defaults to True.
-            schedule_per_step (bool, ):  whether schedule learning rate after each iteration.
             tb_interval (int, ):          the interval to use tb for lr reschedule (only useful when scheduling lr after each iteration, if scheduling per epoch, assign this to 1)
         """
         self.net = net
@@ -83,8 +80,6 @@ class Tempbalance(object):
         self.lr_max_ratio = lr_max_ratio
         self.batchnorm = batchnorm
         self.layernorm = layernorm
-        self.schedule_per_step = schedule_per_step
-        self.warmup_step = warmup_step
         
         self.prev_step = 0
         self.tb_interval = tb_interval
