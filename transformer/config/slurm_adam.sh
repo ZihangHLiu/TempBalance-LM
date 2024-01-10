@@ -13,15 +13,15 @@ conda activate ww_train
 
 export PYTHONUNBUFFERED=1
 SEED=43
-DATA_PATH=/data/yefan0726/data/nlp/mt/data-bin/iwslt14.tokenized.de-en.joined
+DATA_PATH=/scratch/zhliu/data/data-bin/iwslt14.tokenized.de-en.joined
 model=transformer
 PROBLEM=iwslt14_de_en
 ARCH=transformer_iwslt_de_en_v2
-OUTPUT_PATH=/data/yefan0726/checkpoints/zihang/checkpoints/nlp/mt/${PROBLEM}/baseline/${ARCH}_${PROBLEM}_seed${SEED}
+OUTPUT_PATH=/scratch/zhliu/checkpoints/nlp/mt/${PROBLEM}/baseline/${ARCH}_${PROBLEM}_seed${SEED}
 NUM=5
 mkdir -p $OUTPUT_PATH
 
-cd /home/eecs/yefan0726/zihang/layer-wise-learning-rate-schedule-/transformer
+cd /scratch/zhliu/repos/TempBalance-LM/transformer
 
 # python train.py ${DATA_PATH} \
 #     --seed ${SEED} \

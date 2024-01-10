@@ -13,6 +13,39 @@ conda activate ww_train_lm
 bash penn_tree.sh
 ```
 
+## Usage
+```python
+from tempbalance import Tempbalance
+import torch
+model = ...
+# initialize necessary hyperparameters
+start_lr = ...
+# initialize the scheduler
+tb_scheduler = Tempbalance(net=model,
+                start_lr=start_lr,
+                total_steps=total_steps,
+                lr_min_ratio=0.5,
+                lr_max_ratio=1.5
+                )
+# initialize optimizer parameter group
+tb_param_group = tb_scheduler.build_optimizer_param_group(untuned_lr=0.1)
+optimizer = optim.SGD(
+    tb_param_group,
+    ...
+)
+# training loop
+for epoch in range(1, ...):
+    ...
+    train()
+    test()
+    # get global decayed learning rate
+    untuned_global_lr = some_torch_lr_scheduler(epoch)
+    # temperature balancing
+    tb_scheduler.step(optimizer, untuned_global_lr)
+    ...
+```
+
+
 ## Experiments
 ```bash
 # Baseline 

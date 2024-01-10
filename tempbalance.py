@@ -11,6 +11,10 @@ from operator import itemgetter
 class Tempbalance(object):
     def __init__(self, 
                     net, 
+                    start_lr,
+                    total_steps,
+                    warmup_init_lr=0,
+                    warmup_steps=0,
                     EVALS_THRESH=0.00001,
                     bins=100, 
                     conv_norm=0.5,
@@ -29,11 +33,16 @@ class Tempbalance(object):
                     batchnorm_type='name',
                     layernorm=True,
                     schedule_per_step=False,
-                    tb_interval=None
+                    tb_interval=1,
+                    warmup_step=0,
                     ):
         """init function
         Args:
             net (nn.module):             net to train
+            start_lr (float, ):          initial learning rate after warmup
+            total_steps (int, ):         total steps for training, can be epoch or step
+            warmup_init_lr(float, ):     initial learning rate before warmup
+            warmup_steps (int, ):        warmup steps, default set to 0
             EVALS_THRESH (float, ):      threshold to filter small eigenvalue. Defaults to 0.00001.
             bins (int, int):             ESD bins. Defaults to 100.
             conv_norm (float, ):         conv norm. Defaults to 0.5.
@@ -51,9 +60,13 @@ class Tempbalance(object):
             batchnorm (bool, ):          whether adjust batch norm learning rate using TB. Defaults to True.
             linearnorm (bool, ):          whether adjust linear norm learning rate using TB. Defaults to True.
             schedule_per_step (bool, ):  whether schedule learning rate after each iteration.
-            tb_interval (int, ):          the interval to use tb for lr reschedule (only useful when scheduling lr after each iteration)
+            tb_interval (int, ):          the interval to use tb for lr reschedule (only useful when scheduling lr after each iteration, if scheduling per epoch, assign this to 1)
         """
         self.net = net
+        self.start_lr = start_lr
+        self.total_steps = total_steps
+        self.warmup_init_lr = warmup_init_lr
+        self.warmup_steps = warmup_steps
         self.EVALS_THRESH = EVALS_THRESH
         self.bins = bins
         self.conv_norm = conv_norm
@@ -71,9 +84,12 @@ class Tempbalance(object):
         self.batchnorm = batchnorm
         self.layernorm = layernorm
         self.schedule_per_step = schedule_per_step
+        self.warmup_step = warmup_step
         
-        self.train_step = 0
+        self.prev_step = 0
         self.tb_interval = tb_interval
+
+        self.lr_step = (self.start_lr - self.warmup_init_lr) / self.warmup_updates
         
         # print('EVALS_THRESH',  self.EVALS_THRESH, type(self.EVALS_THRESH) )
         # print('bins',  self.bins, type(self.bins) )
@@ -241,29 +257,27 @@ class Tempbalance(object):
                 self.prev_lr.append(param_group['lr'])
             return opt_params_groups, layer_count
     
-    def step(self, optimizer, untuned_lr):
-        if self.schedule_per_step == True:
-            if self.train_step % self.tb_interval == 0:
-                opt_params_groups, layer_count = \
-                    self.build_optimizer_param_group(untuned_lr=untuned_lr, initialize=False)
-                for index, param_group in enumerate(optimizer.param_groups):
-                    if index <= layer_count - 1:
-                        param_group['lr'] = opt_params_groups[index]
-                        self.prev_lr[index] = opt_params_groups[index]
-                    else:
-                        param_group['lr'] = untuned_lr
-                        self.prev_lr[index] = untuned_lr
-            else:
-                for index, param_group in enumerate(optimizer.param_groups):
-                    param_group['lr'] = self.prev_lr[index]
-        else:
+    def step(self, optimizer, untuned_lr, num_updates):
+        if num_updates < self.args.warmup_updates:
+            lr = self.args.warmup_init_lr + num_updates * self.lr_step
+            for index, param_group in enumerate(optimizer.param_groups):
+                param_group['lr'] = lr
+
+        if num_updates % self.tb_interval == 0:
             opt_params_groups, layer_count = \
-                    self.build_optimizer_param_group(untuned_lr=untuned_lr, initialize=False)
+                self.build_optimizer_param_group(untuned_lr=untuned_lr, initialize=False)
             for index, param_group in enumerate(optimizer.param_groups):
                 if index <= layer_count - 1:
                     param_group['lr'] = opt_params_groups[index]
+                    self.prev_lr[index] = opt_params_groups[index]
                 else:
                     param_group['lr'] = untuned_lr
+                    self.prev_lr[index] = untuned_lr
+        else:
+            for index, param_group in enumerate(optimizer.param_groups):
+                param_group['lr'] = self.prev_lr[index]
+
+        self.prev_step = num_updates
                 
     def net_esd_estimator(
             self,

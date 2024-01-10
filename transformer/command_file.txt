@@ -1,5 +1,1 @@
-bash /scratch/tpang/zhliu/repos/layer-wise-learning-rate-schedule-/transformer/config/adam_acc_mid.sh 0.2 1.6
-bash /scratch/tpang/zhliu/repos/layer-wise-learning-rate-schedule-/transformer/config/adam_acc_mid.sh 0.4 1.2
-bash /scratch/tpang/zhliu/repos/layer-wise-learning-rate-schedule-/transformer/config/adam_acc_mid.sh 0.5 1.0
-bash /scratch/tpang/zhliu/repos/layer-wise-learning-rate-schedule-/transformer/config/adam_acc_mid.sh 0.6 0.8
-bash /scratch/tpang/zhliu/repos/layer-wise-learning-rate-schedule-/transformer/config/adam_acc_mid.sh 0.8 0.4
+bash /scratch/zhliu/repos/TempBalance-LM/transformer/config/slurm_adam_tb.sh

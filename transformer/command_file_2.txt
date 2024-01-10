@@ -1,0 +1,2 @@
+bash /scratch/zhliu/repos/TempBalance-LM/transformer/config/adam_group_tb.sh 2.0 xmin
+bash /scratch/zhliu/repos/TempBalance-LM/transformer/config/adam_group_tb.sh 2.0 alpha
