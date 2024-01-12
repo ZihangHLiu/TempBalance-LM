@@ -1,1 +1,0 @@
-bash /scratch/zhliu/repos/TempBalance-LM/transformer/config/slurm_adam_tb.sh

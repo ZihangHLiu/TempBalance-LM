@@ -21,8 +21,8 @@ class Tempbalance(object):
                     pl_fitting='median',
                     xmin_pos=2,
                     filter_zeros=False,
-                    remove_first_layer=True,
-                    remove_last_layer=True,
+                    remove_first_layer=False,
+                    remove_last_layer=False,
                     remove_few_eigs_layer=True,
                     eigs_thresh=0,
                     esd_metric_for_tb='alpha',
@@ -84,7 +84,10 @@ class Tempbalance(object):
         self.prev_step = 0
         self.tb_interval = tb_interval
 
-        self.lr_step = (self.start_lr - self.warmup_init_lr) / self.warmup_updates
+        if self.warmup_steps > 0:
+            self.lr_step = (self.start_lr - self.warmup_init_lr) / self.warmup_steps
+        else:
+            self.lr_step = 0
         
         # print('EVALS_THRESH',  self.EVALS_THRESH, type(self.EVALS_THRESH) )
         # print('bins',  self.bins, type(self.bins) )
@@ -248,29 +251,30 @@ class Tempbalance(object):
         else:
             opt_params_groups.append(untuned_lr)
             self.prev_lr = []
-            for param_group in opt_params_groups:
-                self.prev_lr.append(param_group['lr'])
+            for lr in opt_params_groups:
+                self.prev_lr.append(lr)
             return opt_params_groups, layer_count
     
     def step(self, optimizer, untuned_lr, num_updates):
-        if num_updates < self.args.warmup_updates:
-            lr = self.args.warmup_init_lr + num_updates * self.lr_step
+        if num_updates < self.warmup_steps:
+            assert self.lr_step != 0
+            lr = self.warmup_init_lr + num_updates * self.lr_step
             for index, param_group in enumerate(optimizer.param_groups):
                 param_group['lr'] = lr
-
-        if num_updates % self.tb_interval == 0:
-            opt_params_groups, layer_count = \
-                self.build_optimizer_param_group(untuned_lr=untuned_lr, initialize=False)
-            for index, param_group in enumerate(optimizer.param_groups):
-                if index <= layer_count - 1:
-                    param_group['lr'] = opt_params_groups[index]
-                    self.prev_lr[index] = opt_params_groups[index]
-                else:
-                    param_group['lr'] = untuned_lr
-                    self.prev_lr[index] = untuned_lr
         else:
-            for index, param_group in enumerate(optimizer.param_groups):
-                param_group['lr'] = self.prev_lr[index]
+            if num_updates % self.tb_interval == 0:
+                opt_params_groups, layer_count = \
+                    self.build_optimizer_param_group(untuned_lr=untuned_lr, initialize=False)
+                for index, param_group in enumerate(optimizer.param_groups):
+                    if index <= layer_count - 1:
+                        param_group['lr'] = opt_params_groups[index]
+                        self.prev_lr[index] = opt_params_groups[index]
+                    else:
+                        param_group['lr'] = untuned_lr
+                        self.prev_lr[index] = untuned_lr
+            else:
+                for index, param_group in enumerate(optimizer.param_groups):
+                    param_group['lr'] = self.prev_lr[index]
 
         self.prev_step = num_updates
                 

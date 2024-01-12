@@ -42,7 +42,7 @@ for epoch in range(1, ...):
     # get global decayed learning rate
     untuned_global_lr = some_torch_lr_scheduler(epoch)
     # temperature balancing
-    tb_scheduler.step(optimizer, untuned_global_lr)
+    tb_scheduler.step(optimizer, untuned_global_lr, current_step)
     ...
 ```
 
